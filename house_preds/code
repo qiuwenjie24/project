@@ -1,0 +1,27 @@
+import pandas as pd
+
+# 创建示例数据集
+train_data = pd.DataFrame({
+    'Color': ['Red', 'Blue', 'Green', 'Red'],
+    'Size': ['S', 'M', 'L', 'M'],
+    'Price': [10, 20, 15, 25]
+})
+
+test_data = pd.DataFrame({
+    'Color': ['Blue', 'Green', 'Yellow'],  # 注意：测试集中有一个新类别 'Yellow'
+    'Size': ['L', 'S', 'M'],
+    'Price': [18, 22, 30]
+})
+
+# 使用训练集的特征进行独热编码
+train_encoded = pd.get_dummies(train_data, columns=['Color', 'Size'])
+test_encoded = pd.get_dummies(test_data, columns=['Color', 'Size'])
+
+# 确保测试集的列与训练集一致（缺少的补0），如果测试集有新类别，则这里认为新类别影响不大，可忽略
+test_encoded = test_encoded.reindex(columns=train_encoded.columns, fill_value=0)
+
+# 结果
+print("训练集编码后：")
+print(train_encoded)
+print("\n测试集编码后：")
+print(test_encoded)

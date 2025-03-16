@@ -1,0 +1,116 @@
+MATLAB is selecting SOFTWARE OPENGL rendering.
+
+                            < M A T L A B (R) >
+                  Copyright 1984-2021 The MathWorks, Inc.
+                  R2021b (9.11.0.1769968) 64-bit (glnxa64)
+                             September 17, 2021
+
+ 
+To get started, type doc.
+For product information, visit www.mathworks.com.
+ 
+>> >> >> >> >> >> >> >> >> >> >> >> >> 
+c =
+
+   1.0000e+12
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+     0
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+     1
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+    10
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+   100
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+   1.0000e+12
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> >> 
+c =
+
+     0
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+     1
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+    10
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+   100
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> >> 
+c =
+
+   1.0000e+12
+
+>> >> >> >> {Error using toc
+You must call TIC without an output argument before calling TOC without an
+input argument.
+} 
+>> {Error using exit
+Unrecognized function or variable 'Settings'.
+} 
+{Error using exit
+Unrecognized function or variable 'Settings'.
+} 

@@ -1,0 +1,77 @@
+MATLAB is selecting SOFTWARE OPENGL rendering.
+
+                            < M A T L A B (R) >
+                  Copyright 1984-2021 The MathWorks, Inc.
+                  R2021b (9.11.0.1769968) 64-bit (glnxa64)
+                             September 17, 2021
+
+ 
+To get started, type doc.
+For product information, visit www.mathworks.com.
+ 
+>> >> >> >> >> >> >> >> >> >> >> >> >> 
+c =
+
+     0
+
+>> >> >> >> Elapsed time is 2377.907652 seconds.
+>> >> 
+c =
+
+     1
+
+>> >> >> >> Elapsed time is 4736.248436 seconds.
+>> >> 
+c =
+
+    10
+
+>> >> >> >> Elapsed time is 7055.928787 seconds.
+>> >> 
+c =
+
+   100
+
+>> >> >> >> Elapsed time is 9420.417759 seconds.
+>> >> 
+c =
+
+   1.0000e+12
+
+>> >> >> >> Elapsed time is 11777.199097 seconds.
+>> >> >> 
+c =
+
+     0
+
+>> >> >> >> Elapsed time is 16025.447510 seconds.
+>> >> 
+c =
+
+     1
+
+>> >> >> >> Elapsed time is 20126.795168 seconds.
+>> >> 
+c =
+
+    10
+
+>> >> >> >> Elapsed time is 24248.329548 seconds.
+>> >> 
+c =
+
+   100
+
+>> >> >> >> Elapsed time is 28365.819246 seconds.
+>> >> 
+c =
+
+   1.0000e+12
+
+>> >> >> >> Elapsed time is 32524.660460 seconds.
+>> {Error using exit
+Unrecognized function or variable 'Settings'.
+} 
+{Error using exit
+Unrecognized function or variable 'Settings'.
+} 
