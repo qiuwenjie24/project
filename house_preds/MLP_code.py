@@ -136,15 +136,13 @@ import torch.nn.functional as F
 in_features = train_features.shape[1]
 # 定义多层感知机模型(MLP)
 def get_net(): 
-    net = nn.Sequential(nn.Linear(in_features, in_features),
-                        nn.ReLU(),
-                        nn.Linear(in_features, 1))
+    net = nn.Sequential(nn.Linear(in_features, 1))
     return net 
 
 
 # 使用弹性网络正则化作为损失函数，用于训练优化
 class ElasticNetLoss(nn.Module):
-    def __init__(self, regula_str=0.5, l1_ratio=0.5):
+    def __init__(self, regula_str=0.0, l1_ratio=0.5):
         super().__init__()
         self.regula_str = regula_str        # 控制正则化强度
         self.l1_ratio = l1_ratio  # 控制 L1 和 L2 正则化的比例
@@ -178,20 +176,27 @@ def load_data_array(data_arrays, batch_size, is_train=True):
 
 
 # 训练 
-def train(net, train_features, train_labels, test_features, test_labels,
-    num_epochs, learning_rate, regula_str, l1_ratio, batch_size):
-    train_ls, test_ls = [], []
+def train(net, train_features, train_labels, valid_features, valid_labels,
+    num_epochs, learning_rate, regula_str, l1_ratio, batch_size, is_optuna=False):
+    train_ls, valid_ls = [], []
     train_iter = load_data_array((train_features, train_labels), batch_size)
 
     # Adam优化器
-    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)   #  实际学习率由调度器管理
     # CyclicLR 学习率调度器
     scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, 
-                                                base_lr=learning_rate / 10,
-                                                max_lr=learning_rate,
-                                                step_size_up=20,
-                                                mode="exp_range")
+                                                base_lr=learning_rate / 400,    # 最低学习率
+                                                max_lr=learning_rate,          # 最高学习率（初始学习率）
+                                                step_size_up=1000,               # 上升所需的迭代步数
+                                                mode="exp_range")              # 波动模式：指数衰减
     loss = ElasticNetLoss(regula_str=regula_str, l1_ratio=l1_ratio)
+    
+    # 早停参数
+    patience = 10
+    best_loss = float('inf')
+    best_epoch = 0
+    no_improve = 0
+
     for epoch in range(num_epochs):
         for X, y in train_iter:
             optimizer.zero_grad()
@@ -199,10 +204,22 @@ def train(net, train_features, train_labels, test_features, test_labels,
             l.backward()
             optimizer.step()    # 更新模型参数
             scheduler.step()    # 更新学习率
+
         train_ls.append(log_rmse(net, train_features, train_labels))
-        if test_labels is not None:
-            test_ls.append(log_rmse(net, test_features, test_labels))
-    return train_ls, test_ls  
+        if valid_labels is not None:
+            current_val_loss = log_rmse(net, valid_features, valid_labels)
+            valid_ls.append(current_val_loss)
+            # 仅对验证集早停判断（但不进行提前终止，仅记录，因为后面需要每个回合的数据画图）
+            if current_val_loss < best_loss:
+                best_loss = current_val_loss
+                best_epoch = epoch
+                no_improve = 0
+            elif is_optuna is True:   # 如果是超参数调优则使用早停
+                no_improve += 1
+                if no_improve >= patience:
+                    break  # 提前终止训练
+
+    return train_ls, valid_ls, best_epoch, best_loss  
 
 
 # ---------------K折交叉验证------------------
@@ -225,70 +242,81 @@ def get_k_fold_data(k, i, X, y):
     return X_train, y_train, X_valid, y_valid
 
 # K折交叉验证中训练
-def k_fold(k, X_train, y_train, num_epochs, learning_rate, regula_str, l1_ratio, batch_size):
+def k_fold(k, X_train, y_train, num_epochs, learning_rate, regula_str, l1_ratio, batch_size, is_optuna=False):
 
     train_l_epochs, valid_l_epochs = [0]*(num_epochs + 1), [0]*(num_epochs + 1)
+    all_best_epochs = []
+    all_best_loss = []
     for i in range(k):
         data = get_k_fold_data(k, i, X_train, y_train)
         net = get_net()   # 获取并初始化模型
-        train_ls, valid_ls = train(net, *data, num_epochs, learning_rate, 
-                                   regula_str, l1_ratio, batch_size)
+        train_ls, valid_ls, best_epoch, best_loss = train(net, *data, num_epochs, learning_rate, 
+                                   regula_str, l1_ratio, batch_size, is_optuna)
 
-        train_l_epochs = [x + y/k for x, y in zip(train_l_epochs, train_ls)]
-        valid_l_epochs = [x + y/k for x, y in zip(valid_l_epochs, valid_ls)]
-            
-        # print(f'{i + 1}th-fold, log rmse of train data: {float(train_ls[-1]):f}, '
-        #       f'log rmse of valid data: {float(valid_ls[-1]):f}')
-   
-    return train_l_epochs, valid_l_epochs  # 返回每个回合的损失
+        all_best_epochs.append(best_epoch)
+        all_best_loss.append(best_loss)
+        if is_optuna is False:
+            train_l_epochs = [x + y/k for x, y in zip(train_l_epochs, train_ls)]
+            valid_l_epochs = [x + y/k for x, y in zip(valid_l_epochs, valid_ls)]
+        
+
+    return train_l_epochs, valid_l_epochs, all_best_epochs, all_best_loss  # 返回每个回合的损失 和 每折验证集的最佳回合、损失
 
 
 # ---------超参数选择，使用自动调参找到损失最小的一组超参数-----------
 import optuna
 # Optuna 目标函数，定义单次超参数试验的完整流程，由 Optuna 自动调用。
 def objective(trial):
+
     # 动态采样超参数
     k = trial.suggest_int("k", 5, 10)
-    num_epochs = trial.suggest_int("num_epochs", 20, 100)
-    lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
-    regula_str = trial.suggest_float("regula_str", 1e-4, 1, log=True)
-    l1_ratio = trial.suggest_float("l1_ratio", 0, 1)
+    num_epochs = 300
+    lr = trial.suggest_float("lr", 1e-1, 100, log=True)
+    regula_str = trial.suggest_categorical("regula_str", [i*0.05 for i in range(0, 10, 1)] ) #trial.suggest_float("regula_str", 0, 0, log=True)
+    l1_ratio = trial.suggest_categorical("l1_ratio", [i*0.1 for i in range(0, 5, 1)] ) #trial.suggest_float("l1_ratio", 0, 0)
 
-    exponent = trial.suggest_int("batch_size_exponent", 4, 8) 
+    exponent = trial.suggest_int("batch_size_exponent", 5, 8) 
     batch_size =  2 ** exponent   # 2^4=16, 2^8=256
 
-    train_l_epochs, valid_l_epochs = k_fold(k, train_features, train_labels, num_epochs, lr,
-                              regula_str, l1_ratio, batch_size)
+    _, _, all_best_epochs, all_best_loss = k_fold(k, train_features, train_labels, num_epochs, lr,
+                                                    regula_str, l1_ratio, batch_size, is_optuna=True)
 
-    return valid_l_epochs[-1]  # 返回优化目标（损失值）
+    final_best_epoch = int(np.mean(all_best_epochs))
+    final_best_loss = np.mean(all_best_loss)
+    # 将最佳轮数保存为 Trial 的用户属性
+    trial.set_user_attr("best_epoch", final_best_epoch)
+    trial.set_user_attr("max_epoch", num_epochs)
+    return final_best_loss  # 返回优化目标（损失值）即平均最佳损失
 
 # 创建 Study 用于记录所有试验的结果，并启动自动调参
-study = optuna.create_study(direction="minimize")  # 目标是最小化损失
-study.optimize(objective, n_trials=100) # 尝试 n_trials 组超参数组合
+# study = optuna.create_study(direction="minimize")  # 目标是最小化损失
+# study.optimize(objective, n_trials=20) # 尝试 n_trials 组超参数组合
 
 # 保存
 import joblib
-joblib.dump(study, "MLP_study.pkl")
+# joblib.dump(study, "MLP_study.pkl")
 # 加载
-# study = joblib.load("MLP_study.pkl")
+study = joblib.load("MLP_study.pkl")
 
 # 输出最佳结果
-best_params = study.best_params  # 返回最佳试验的超参数键值对
-print(f'{best_params["k"]}-fold: final average log rmse of valid data: {float(study.best_trial.value):f}',  # 目标函数的返回值（即损失值）
-      '\nbest parameters:', best_params)
+best_trial = study.best_trial  # 返回最佳试验，object对象
+best_params = best_trial.params  # 返回最佳试验的超参数键值对
+print(f'{best_params["k"]}-fold: final average log rmse of valid data: {float(best_trial.value):f}',  # 目标函数的返回值（即损失值）
+      '\nbest parameters:', best_params, '\nbest epoch:', best_trial.user_attrs["best_epoch"])
 
 # -----------当前参数下的验证损失图像---------
 # 最优超参数
 k = best_params["k"]
-num_epochs = best_params["num_epochs"]   # 20
+num_epochs = best_trial.user_attrs["best_epoch"]   # max_epoch, best_epoch
 lr = best_params["lr"]
 regula_str = best_params["regula_str"]
 l1_ratio = best_params["l1_ratio"]
 exponent = best_params["batch_size_exponent"] 
-batch_size =  2 ** exponent   # 2^4=16, 2^8=256
+batch_size = 2 ** exponent   # 2^4=16, 2^8=256
 
-train_l_epochs, valid_l_epochs = k_fold(k, train_features, train_labels, num_epochs, lr,
-                                        regula_str, l1_ratio, batch_size)
+train_l_epochs, valid_l_epochs, _, _ = k_fold(k, train_features, train_labels, num_epochs, lr,
+                                        regula_str, l1_ratio, batch_size, is_optuna=False)
+print(f'Final log rmse of valid data: {float(valid_l_epochs[-1]):f}')
 
 # 画图，每个回合数的平均训练损失和平均验证损失
 plt.figure() 
@@ -300,24 +328,27 @@ plt.xlabel("epoch")
 plt.ylabel("log RMSE")
 plt.title('average loss---MLP')
 plt.grid(True)
-
-
+# plt.show()
+# input()
 
 # --------------保存模型参数---------------
 # 用全部数据训练
+best_epoch = best_trial.user_attrs["best_epoch"]
+
 net = get_net()  # 初始化
-train_ls, _ = train(net, train_features, train_labels, None, None,
-                    num_epochs, lr, regula_str, l1_ratio, batch_size)
+train_ls, _, _, _ = train(net, train_features, train_labels, None, None,
+                    best_epoch, lr, regula_str, l1_ratio, batch_size, is_optuna=False)
+print(f'Final log rmse of all train data: {float(train_ls[-1]):f}')
+
 # 画图，训练损失
 plt.figure() 
-plt.plot(np.arange(1, num_epochs + 1), train_ls, label='train')
+plt.plot(np.arange(1, best_epoch + 1), train_ls, label='train')
 plt.legend()
 plt.yscale('log')
 plt.xlabel('epoch')
 plt.ylabel('log RMSE')
 plt.grid(True)  # 显示网格 
 
-print(f'Final log rmse of all train data: {float(train_ls[-1]):f}')
 
 # 保存模型
 torch.save(net.state_dict(), "MLP_model.pth")
